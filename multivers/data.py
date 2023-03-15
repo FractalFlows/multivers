@@ -17,10 +17,11 @@ import util
 es_host = os.getenv("ES_HOST")
 es_username = os.getenv("ES_USERNAME")
 es_pswd = os.getenv("ES_PSWD")
+es_verify_certs = False if os.getenv("ES_VERIFY_CERTS") == "false" else True
 
-print(es_host, es_username, es_pswd)
+print(es_host, es_username, es_pswd, es_verify_certs)
 
-es = Elasticsearch(hosts=[es_host], basic_auth=[es_username, es_pswd], verify_certs=False)
+es = Elasticsearch(hosts=[es_host], basic_auth=[es_username, es_pswd], verify_certs=es_verify_certs)
 nlp = spacy.load("en_core_sci_sm")
 
 def get_tokenizer():
