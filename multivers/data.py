@@ -7,9 +7,22 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer, BatchEncoding
 import torch
 import numpy as np
+from elasticsearch import Elasticsearch
+import scispacy
+import spacy
+import os
 
 import util
 
+es_host = os.getenv("ES_HOST")
+es_username = os.getenv("ES_USERNAME")
+es_pswd = os.getenv("ES_PSWD")
+es_verify_certs = False if os.getenv("ES_VERIFY_CERTS") == "false" else True
+
+print(es_host, es_username, es_pswd, es_verify_certs)
+
+es = Elasticsearch(hosts=[es_host], basic_auth=[es_username, es_pswd], verify_certs=es_verify_certs)
+nlp = spacy.load("en_core_sci_sm")
 
 def get_tokenizer():
     "Need to add a few special tokens to the default longformer checkpoint."
@@ -177,8 +190,7 @@ class MultiVerSReader:
     Class to handle SciFact with retrieved documents.
     """
     def __init__(self, predict_args):
-        self.data_file = predict_args.input_file
-        self.corpus_file = predict_args.corpus_file
+        self.claim = predict_args.claim
         # Basically, I used two different sets of labels. This was dumb, but
         # doing this mapping fixes it.
         self.label_map = {"SUPPORT": "SUPPORTS",
@@ -189,19 +201,31 @@ class MultiVerSReader:
         Get the data for the relevant fold.
         """
         res = []
-
-        corpus = util.load_jsonl(self.corpus_file)
-        corpus_dict = {x["doc_id"]: x for x in corpus}
-        claims = util.load_jsonl(self.data_file)
+        candidates = es.search(index='fractalflows', body={
+            'min_score': 20,
+            'size': 10000,
+            'query': {
+                "match": {
+                    "abstract": {
+                        "query": self.claim
+                    }
+                }
+            }
+        })
+        claims = [{"id": 1, "claim": self.claim}]
+        
+        print(candidates["hits"]["total"])
 
         for claim in claims:
-            for doc_id in claim["doc_ids"]:
-                candidate_doc = corpus_dict[doc_id]
+            for hit in candidates["hits"]["hits"]:
+                candidate_doc = hit["_source"]
+                doc = nlp(candidate_doc["abstract"])
+                abstract_sents = [sent.text for sent in doc.sents]
                 to_tensorize = {"claim": claim["claim"],
-                                "sentences": candidate_doc["abstract"],
-                                "title": candidate_doc["title"]}
+                                "sentences": abstract_sents,
+                                "title": candidate_doc["title"][1]}
                 entry = {"claim_id": claim["id"],
-                         "abstract_id": candidate_doc["doc_id"],
+                         "abstract_id": int(candidate_doc["pmc"][3:]),
                          "to_tensorize": to_tensorize}
                 res.append(entry)
 

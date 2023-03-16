@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import argparse
 from pathlib import Path
+import os
 
 from model import MultiVerSModel
 from data import get_dataloader
@@ -10,9 +11,8 @@ import util
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str)
-    parser.add_argument("--input_file", type=str)
-    parser.add_argument("--corpus_file", type=str)
     parser.add_argument("--output_file", type=str)
+    parser.add_argument("--claim", type=str)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--device", default=0, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
@@ -37,7 +37,9 @@ def get_predictions(args):
         model.label_threshold = 0.0
 
     # Since we're not running the training loop, gotta put model on GPU.
-    model.to(f"cuda:{args.device}")
+    if os.getenv("GPU") == "true":
+        model.to(f"cuda:{args.device}")
+
     model.eval()
     model.freeze()
 
@@ -63,7 +65,8 @@ def get_predictions(args):
 def format_predictions(args, predictions_all):
     # Need to get the claim ID's from the original file, since the data loader
     # won't have a record of claims for which no documents were retireved.
-    claims = util.load_jsonl(args.input_file)
+    # claims = util.load_jsonl(args.input_file)
+    claims = [{"id": 1, "claim": args.claim}]
     claim_ids = [x["id"] for x in claims]
     assert len(claim_ids) == len(set(claim_ids))
 
@@ -95,6 +98,7 @@ def format_predictions(args, predictions_all):
 
 def main():
     args = get_args()
+    print(args.claim)
     outname = Path(args.output_file)
     predictions = get_predictions(args)
 
